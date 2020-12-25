@@ -9,9 +9,3 @@ services:
       - "4567:4567"
     volumes:
       - .:/src
-    
-    redis:
-    restart: always
-    image: redis:5-alpine
-    ports:
-      - '6379:6379'
