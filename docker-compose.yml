@@ -1,31 +1,13 @@
 version: '3'
-
 services:
-web:
-container_name: backend
-build: .
-volumes:
-- ~/app_name:/code
-ports:
-- "8000:8000"
-environment:
-- PORT=${PORT}
-- DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
-depends_on:
-- postgres
-
-postgres:
-container_name: postgres
-image: postgres
-restart: always
-environment:
-- POSTGRES_USER=${PG_USER}
-- POSTGRES_PASSWORD=${PG_PASS}
-- POSTGRES_DB=${PG_DB}
-ports:
-- 5432:5432
-volumes:
-- pgdata:/var/lib/postgresql/data
-
-volumes:
-pgdata:
+  web:
+    image: nginx
+  db:
+    image: mysql
+    ports:
+    - "3306:3306"
+    environment:
+    - MYSQL_ROOT_PASSWORD=password
+    - MYSQL_USER=user
+    - MYSQL_PASSWORD=password
+    - MYSQL_DATABASE=demodb
