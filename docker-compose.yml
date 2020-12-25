@@ -1,33 +1,31 @@
-version: "3"
+version: '3'
+
 services:
-  database:
-    image: antoinede/transport_data_gouv_dev_database
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: transport_repo
-      POSTGRES_PASSWORD: postgres # obviously do not use this in production
-  web:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    ports:
-      - 5000:5000
-    volumes:
-      - build:/app/_build
-      - deps:/app/deps
-      - ./apps:/app/apps/
-    env_file:
-        - .env
-    environment:
-        PG_URL: ecto://postgres:postgres@database/transport_repo
-        PG_URL_TEST: ecto://postgres:postgres@database/transport_test
-    depends_on:
-        - database
+web:
+container_name: backend
+build: .
 volumes:
-  pgdata:
-  .:
-  build:
-  .:
-  deps:
-  .:
+- ~/app_name:/code
+ports:
+- "8000:8000"
+environment:
+- PORT=${PORT}
+- DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+depends_on:
+- postgres
+
+postgres:
+container_name: postgres
+image: postgres
+restart: always
+environment:
+- POSTGRES_USER=${PG_USER}
+- POSTGRES_PASSWORD=${PG_PASS}
+- POSTGRES_DB=${PG_DB}
+ports:
+- 5432:5432
+volumes:
+- pgdata:/var/lib/postgresql/data
+
+volumes:
+pgdata:
