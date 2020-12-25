@@ -1,100 +1,125 @@
-ARG DOCKER_VERSION=19.03
-ARG PYTHON_VERSION=3.9.0
+# syntax=docker/dockerfile:experimental
 
-ARG BUILD_ALPINE_VERSION=3.12
-ARG BUILD_CENTOS_VERSION=7
-ARG BUILD_DEBIAN_VERSION=slim-buster
 
-ARG RUNTIME_ALPINE_VERSION=3.12
-ARG RUNTIME_CENTOS_VERSION=7
-ARG RUNTIME_DEBIAN_VERSION=buster-slim
+#   Copyright 2020 Docker Compose CLI authors
 
-ARG DISTRO=alpine
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
 
-FROM docker:${DOCKER_VERSION} AS docker-cli
+#       http://www.apache.org/licenses/LICENSE-2.0
 
-FROM python:${PYTHON_VERSION}-alpine${BUILD_ALPINE_VERSION} AS build-alpine
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+
+ARG GO_VERSION=1.15.6-alpine
+ARG GOLANGCI_LINT_VERSION=v1.33.0-alpine
+ARG PROTOC_GEN_GO_VERSION=v1.4.3
+
+FROM --platform=${BUILDPLATFORM} golang:${GO_VERSION} AS base
+WORKDIR /compose-cli
+ENV GO111MODULE=on
 RUN apk add --no-cache \
-    bash \
-    build-base \
-    ca-certificates \
-    curl \
-    gcc \
     git \
-    libc-dev \
-    libffi-dev \
-    libgcc \
+    docker \
     make \
-    musl-dev \
-    openssl \
-    openssl-dev \
-    zlib-dev
-ENV BUILD_BOOTLOADER=1
+    protoc \
+    protobuf-dev
+COPY go.* .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
-FROM python:${PYTHON_VERSION}-${BUILD_DEBIAN_VERSION} AS build-debian
-RUN apt-get update && apt-get install --no-install-recommends -y \
-    curl \
-    gcc \
-    git \
-    libc-dev \
-    libffi-dev \
-    libgcc-8-dev \
-    libssl-dev \
-    make \
-    openssl \
-    zlib1g-dev
-
-FROM centos:${BUILD_CENTOS_VERSION} AS build-centos
-RUN yum install -y \
-    gcc \
-    git \
-    libffi-devel \
-    make \
-    openssl \
-    openssl-devel
-WORKDIR /tmp/python3/
-ARG PYTHON_VERSION
-RUN curl -L https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz | tar xzf - \
-    && cd Python-${PYTHON_VERSION} \
-    && ./configure --enable-optimizations --enable-shared --prefix=/usr LDFLAGS="-Wl,-rpath /usr/lib" \
-    && make altinstall
-RUN alternatives --install /usr/bin/python python /usr/bin/python2.7 50
-RUN alternatives --install /usr/bin/python python /usr/bin/python$(echo "${PYTHON_VERSION%.*}") 60
-RUN curl https://bootstrap.pypa.io/get-pip.py | python -
-
-FROM build-${DISTRO} AS build
-ENTRYPOINT ["sh", "/usr/local/bin/docker-compose-entrypoint.sh"]
-WORKDIR /code/
-COPY docker-compose-entrypoint.sh /usr/local/bin/
-COPY --from=docker-cli /usr/local/bin/docker /usr/local/bin/docker
-RUN pip install \
-    virtualenv==20.2.2 \
-    tox==3.20.1
-COPY requirements-dev.txt .
-COPY requirements-indirect.txt .
-COPY requirements.txt .
-RUN pip install -r requirements.txt -r requirements-indirect.txt -r requirements-dev.txt
-COPY .pre-commit-config.yaml .
-COPY tox.ini .
-COPY setup.py .
-COPY README.md .
-COPY compose compose/
-RUN tox --notest
+FROM base AS make-protos
+ARG PROTOC_GEN_GO_VERSION
+RUN go get github.com/golang/protobuf/protoc-gen-go@${PROTOC_GEN_GO_VERSION}
 COPY . .
-ARG GIT_COMMIT=unknown
-ENV DOCKER_COMPOSE_GITSHA=$GIT_COMMIT
-RUN script/build/linux-entrypoint
+RUN make -f builder.Makefile protos
 
-FROM scratch AS bin
-ARG TARGETARCH
+FROM golangci/golangci-lint:${GOLANGCI_LINT_VERSION} AS lint-base
+
+FROM base AS lint
+ENV CGO_ENABLED=0
+COPY --from=lint-base /usr/bin/golangci-lint /usr/bin/golangci-lint
+ARG BUILD_TAGS
+ARG GIT_TAG
+RUN --mount=target=. \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/root/.cache/golangci-lint \
+    BUILD_TAGS=${BUILD_TAGS} \
+    GIT_TAG=${GIT_TAG} \
+    make -f builder.Makefile lint
+
+FROM base AS import-restrictions-base
+RUN go get github.com/docker/import-restrictions
+
+FROM import-restrictions-base AS import-restrictions
+RUN --mount=target=. \
+    --mount=type=cache,target=/go/pkg/mod \
+    make -f builder.Makefile import-restrictions
+
+FROM base AS make-cli
+ENV CGO_ENABLED=0
 ARG TARGETOS
-COPY --from=build /usr/local/bin/docker-compose /docker-compose-${TARGETOS}-${TARGETARCH}
+ARG TARGETARCH
+ARG BUILD_TAGS
+ARG GIT_TAG
+RUN --mount=target=. \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    GOOS=${TARGETOS} \
+    GOARCH=${TARGETARCH} \
+    BUILD_TAGS=${BUILD_TAGS} \
+    GIT_TAG=${GIT_TAG} \
+    make BINARY=/out/docker -f builder.Makefile cli
 
-FROM alpine:${RUNTIME_ALPINE_VERSION} AS runtime-alpine
-FROM debian:${RUNTIME_DEBIAN_VERSION} AS runtime-debian
-FROM centos:${RUNTIME_CENTOS_VERSION} AS runtime-centos
-FROM runtime-${DISTRO} AS runtime
-COPY docker-compose-entrypoint.sh /usr/local/bin/
-ENTRYPOINT ["sh", "/usr/local/bin/docker-compose-entrypoint.sh"]
-COPY --from=docker-cli  /usr/local/bin/docker           /usr/local/bin/docker
-COPY --from=build       /usr/local/bin/docker-compose   /usr/local/bin/docker-compose
+FROM base AS make-cross
+ARG BUILD_TAGS
+ARG GIT_TAG
+RUN --mount=target=. \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    BUILD_TAGS=${BUILD_TAGS} \
+    GIT_TAG=${GIT_TAG} \
+    make BINARY=/out/docker  -f builder.Makefile cross
+
+FROM scratch AS protos
+COPY --from=make-protos /compose-cli/protos .
+
+FROM scratch AS cli
+COPY --from=make-cli /out/* .
+
+FROM scratch AS cross
+COPY --from=make-cross /out/* .
+
+FROM base AS test
+ENV CGO_ENABLED=0
+ARG BUILD_TAGS
+ARG GIT_TAG
+RUN --mount=target=. \
+    --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    BUILD_TAGS=${BUILD_TAGS} \
+    GIT_TAG=${GIT_TAG} \
+    make -f builder.Makefile test
+
+FROM base AS check-license-headers
+RUN go get -u github.com/kunalkushwaha/ltag
+RUN --mount=target=. \
+    make -f builder.Makefile check-license-headers
+
+FROM base AS make-go-mod-tidy
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod tidy
+
+FROM scratch AS go-mod-tidy
+COPY --from=make-go-mod-tidy /compose-cli/go.mod .
+COPY --from=make-go-mod-tidy /compose-cli/go.sum .
+
+FROM base AS check-go-mod
+COPY . .
+RUN make -f builder.Makefile check-go-mod
