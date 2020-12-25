@@ -9,7 +9,14 @@ services:
       - "4567:4567"
     volumes:
       - .:/src
-      app:
+    
+    redis:
+    restart: always
+    image: redis:5-alpine
+    ports:
+      - '6379:6379'
+
+app:
     build:
       context: app
       dockerfile: Dockerfile
