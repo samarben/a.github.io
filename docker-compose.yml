@@ -1,11 +1,15 @@
-version: '2'
+version: "3"  # optional since v1.27.0
 services:
-  guides:
-    build:
-      context: .
-      dockerfile: ./Dockerfile
-    command: bundle exec middleman
+  web:
+    build: .
     ports:
-      - "4567:4567"
+      - "5000:5000"
     volumes:
-      - .:/src
+      - .:/code
+      - logvolume01:/var/log
+    links:
+      - redis
+  redis:
+    image: redis
+volumes:
+  logvolume01: {}
