@@ -1,6 +1,0 @@
-.git
-node_modules
-vendor
-var/cache/*
-var/sessions/*
-var/logs/*
