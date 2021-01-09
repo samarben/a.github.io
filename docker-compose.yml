@@ -1,9 +1,9 @@
-version: '3.7'
-
+version: '3'
 services:
-  y.github.io:
-    image: samarben/y.github.io:0.0.1
+  db:
+    image: mysql:5.7
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
     ports:
       - 80:80
-      depends_on:
-      - y.github.io
