@@ -4,8 +4,6 @@ services:
     image: mysql:5.7
     volumes:
       - db_data:/var/lib/mysql
-       command: python manage.py runserver 0.0.0.0:80
- env_file: .env-local
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: somewordpress
