@@ -1,14 +1,17 @@
-version: "2"  # optional since v1.27.0
+version: '2'
+
+networks:
+  app-tier:
+    driver: bridge
+
 services:
-    build: .
-    ports:
-      - "5000:5000"
-    volumes:
-      - .:/code
-      - logvolume01:/var/log
-    links:
-      - redis
   redis:
-    image: redis
-volumes:
-  logvolume01: {}
+    image: 'bitnami/redis:latest'
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    networks:
+      - app-tier
+  myapp:
+    image: 'YOUR_APPLICATION_IMAGE'
+    networks:
+      - app-tier
