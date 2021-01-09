@@ -13,6 +13,6 @@ services:
     image: samarben/y.github.ioont:v1
     container_name: azure-vote-front
     environment:
-      REDIS: azure-vote-back
+      REDIS: samarben/y.github.io
     ports:
         - "8080:80"
