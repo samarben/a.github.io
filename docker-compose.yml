@@ -3,10 +3,10 @@ version: '2'
 services:
     blog:
         # optional
-        container_name: php-and-symfony-blog
+        container_name: testweb
 
         # tag the image, so we can later push it
-        image: matthiasnoback/php-and-symfony-blog
+        image: samarben/bb.github.io
 
         # should Nginx crash, always restart it
         restart: always
