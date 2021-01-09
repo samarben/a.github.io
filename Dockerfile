@@ -1,4 +1,3 @@
-FROM ubuntu:18.04
-COPY . /app
-RUN make /app
-CMD python /app/app.py
+FROM nginx:1.11-alpine
+RUN rm -rf /usr/share/nginx/html
+COPY output /usr/share/nginx/html
