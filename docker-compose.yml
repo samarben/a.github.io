@@ -1,0 +1,9 @@
+version: '3.7'
+
+services:
+  y.github.io:
+    image: samarben/y.github.io:0.0.1
+    ports:
+      - 80:80
+      depends_on:
+      - y.github.io
