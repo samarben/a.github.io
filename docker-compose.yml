@@ -1,17 +1,32 @@
 version: '2'
 
-networks:
-  app-tier:
-    driver: bridge
-
 services:
   redis:
-    image: 'samarben/y.github.io'
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes
+    image: redis:alpine
+    container_name: redis_db
+    command: redis-server --appendonly yes
+    ports:
+      - 6379:6379
+    volumes:
+      - ./data:/data
+    restart: always
     networks:
-      - app-tier
-  myapp:
-    image: 'YOUR_APPLICATION_IMAGE'
+      - redis_net
+
+  idp:
+    depends_on:
+      - redis
+    image: tenstartups/redis-commander
+    container_name: redis_comndr
+    command: --redis-host redis
+    ports:
+      - 8081:8081
+    links:
+      - redis:redis
+    restart: always
     networks:
-      - app-tier
+      - redis_net
+
+networks:
+  redis_net:
+    driver: bridge
